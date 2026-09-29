@@ -1,0 +1,52 @@
+name: Auto-sync upstream
+
+on:
+  schedule:
+    # 每天 UTC 04:00（北京时间 12:00）自动同步上游
+    - cron: "0 4 * * *"
+  # 也可手动触发：仓库 Actions 页面 → Auto-sync upstream → Run workflow
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Merge upstream/master into master
+        run: |
+          git remote add upstream https://github.com/miantiao-me/Sink.git
+          git fetch upstream master
+
+          if git merge-base --is-ancestor upstream/master master; then
+            echo "Already in sync with upstream; nothing to do."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git merge --no-ff --no-edit upstream/master; then
+            echo "Merged upstream into master: $(git log --oneline -3)"
+          else
+            echo "::error:: 与上游 miantiao-me/Sink 合并出现冲突：请手动合并 upstream/master 并推送 master，冲突不会静默跳过。"
+            git merge --abort || true
+            exit 1
+          fi
+
+      - name: Push master
+        run: |
+          after="$(git rev-parse HEAD)"
+          before="$(git rev-parse origin/master)"
+          if [ "$after" != "$before" ]; then
+            git push origin master
+            echo "Pushed merged master."
+          else
+            echo "No changes to push."
+          fi
